@@ -26,6 +26,7 @@ jobs:
       - name: 打包
         run: |
           set -eu
+          mkdir -p dist
           npm pack --pack-destination dist
           # 版本号文件名留给固定版本的人，稳定名留给 latest/download
           cp dist/transsioner-cli-*.tgz dist/transsioner-cli.tgz
