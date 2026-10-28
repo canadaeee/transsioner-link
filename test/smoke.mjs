@@ -12,8 +12,8 @@ import {
   looksLikeDocxXml,
   normalizeDocContent,
 } from '../lib/docx.js'
-import { clip, renderChats, renderDoc, renderMessages } from '../lib/format.js'
-import { renderComments, renderWhiteboard } from '../lib/whiteboard.js'
+import { clip, renderChats, renderDoc, renderMessages, renderRecords, renderTables } from '../lib/format.js'
+import { collectTables, renderComments, renderTableMarkdown, renderWhiteboard } from '../lib/whiteboard.js'
 import { parseTarget } from '../lib/link.js'
 import { loadTools } from './host.mjs'
 
@@ -96,6 +96,46 @@ check('真实样式的文档不残留标签', () => {
   assert.match(text, /# 总结/)
 })
 
+console.log('多维表格渲染')
+check('表清单认 id/rev/records_count，不出现 undefined', () => {
+  const text = renderTables({ url: 'u', tables: [{ id: 'tblA', name: 'A表', rev: 7, records_count: 3 }] })
+  assert.match(text, /table_id=tblA/)
+  assert.match(text, /3 条记录/)
+  assert.match(text, /rev=7/)
+  assert.doesNotMatch(text, /undefined/)
+})
+check('老版本返回的 table_id/revision 也认', () => {
+  const text = renderTables({ tables: [{ table_id: 'tblB', name: 'B表', revision: 9 }] })
+  assert.match(text, /table_id=tblB/)
+  assert.match(text, /rev=9/)
+})
+check('记录按 fields + 二维矩阵渲染，复杂单元格拍平', () => {
+  const text = renderRecords({
+    table: 'T',
+    fields: ['名称', '状态', '人'],
+    rows: [
+      ['甲', ['完成'], [{ id: 'ou_1', name: '王胤明' }]],
+      ['乙', null, []],
+    ],
+    recordIds: ['rec1', 'rec2'],
+    hasMore: true,
+    rev: 42,
+  })
+  assert.match(text, /\| 名称 \| 状态 \| 人 \| record_id \|/)
+  assert.match(text, /\| 甲 \| 完成 \| 王胤明 \| rec1 \|/)
+  assert.match(text, /\| 乙 \|  \|  \| rec2 \|/)
+  assert.match(text, /还有更多/)
+  assert.match(text, /rev=42/)
+})
+check('单元格里的换行与竖线不破坏表格', () => {
+  const text = renderRecords({ table: 'T', fields: ['a'], rows: [['x\ny|z']] })
+  assert.match(text, /x<br>y\\\|z/)
+})
+check('空表给结论而不是空表格', () => {
+  const text = renderRecords({ table: 'T', fields: ['a'], rows: [] })
+  assert.match(text, /没有记录/)
+})
+
 console.log('画板与评论渲染')
 check('画板节点按上下再左右排序', () => {
   const text = renderWhiteboard({
@@ -119,6 +159,39 @@ check('多行文字保留缩进', () => {
 check('空画板给出提示而不是空白', () => {
   const text = renderWhiteboard({ token: 'W', nodes: [{ id: 'c', type: 'connector' }] })
   assert.match(text, /没有文字节点/)
+})
+check('画板原生表格按 row/col 还原（文字在 table.cells[].text 上）', () => {
+  const nodes = [
+    {
+      id: 'q1:1',
+      type: 'table',
+      table: {
+        meta: { row_num: 2, col_num: 3 },
+        cells: [
+          { row_index: 1, col_index: 2, text: { text: '阶段名' } },
+          { row_index: 1, col_index: 3, text: { text: '门禁' } },
+          { row_index: 2, col_index: 1, text: { text: '产品经理' } },
+        ],
+      },
+    },
+  ]
+  const text = renderWhiteboard({ token: 'W', nodes })
+  assert.match(text, /表格 1 块|表格 1（2 行 × 3 列）/)
+  assert.match(text, /\|  \| 阶段名 \| 门禁 \|/)
+  assert.match(text, /\| 产品经理 \|  \|  \|/)
+
+  const [table] = collectTables(nodes)
+  assert.equal(table.rowNum, 2)
+  assert.equal(table.colNum, 3)
+  assert.equal(renderTableMarkdown(table, 0).split('\n').length, 4)
+})
+check('只有表格、没有散文字的画板也要输出表格', () => {
+  const text = renderWhiteboard({
+    token: 'W',
+    nodes: [{ id: 't', type: 'table', table: { meta: { row_num: 1, col_num: 2 }, cells: [{ row_index: 1, col_index: 1, text: { text: '甲' } }] } }],
+  })
+  assert.match(text, /\| 甲 \|  \|/)
+  assert.doesNotMatch(text, /没有文字节点/)
 })
 check('评论带作者、引用与回复', () => {
   const text = renderComments({

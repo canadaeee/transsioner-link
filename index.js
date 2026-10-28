@@ -502,19 +502,28 @@ export function apply(ctx, config) {
           '--base-token', target.token,
           '--table-id', table,
           '--limit', String(limit),
-          '--format', 'markdown',
+          // 1.0.98 起 `--format markdown` 已被移除（只剩 json 内联矩阵与 ndjson 落盘），
+          // 用 json 拿 `fields` + 二维 data，自己渲染 Markdown 表格。
+          '--format', 'json',
         ]
         if (offset > 0) argv.push('--offset', String(offset))
 
-        // record-list 的 markdown 输出不是 JSON 信封，走 runText
-        const result = await runner.runText(argv, { signal: exec?.signal })
+        const result = await runner.runJson(argv, { signal: exec?.signal })
         if (!result.ok) return result.message
-        return renderRecords({
-          url: target.url,
-          table,
-          markdown: clip(result.text, settings.maxChars, '可增大 offset 继续，或减小 limit。'),
-          count: limit,
-        })
+        const data = result.data ?? {}
+        return clip(
+          renderRecords({
+            url: target.url,
+            table,
+            fields: data.fields,
+            rows: Array.isArray(data.data) ? data.data : [],
+            recordIds: data.record_id_list,
+            hasMore: data.has_more === true,
+            rev: data.rev,
+          }),
+          settings.maxChars,
+          '可增大 offset 继续，或减小 limit。',
+        )
       },
     })
 

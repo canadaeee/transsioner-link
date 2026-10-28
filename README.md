@@ -51,7 +51,7 @@ https://github.com/canadaeee/transsioner-link
 ```
 
 DSH 会用 pnpm 把仓库克隆到当前 profile 并登记成 bundle，装完重启生效。
-想固定某个版本就在后面加 `#v1.1.0`。
+想固定某个版本就在后面加 `#v1.1.1`。
 
 **② 用 Release 里的 tgz（国内网络拉 GitHub 不稳时更可靠）**
 
@@ -191,6 +191,25 @@ LARK_TEST_PROFILE=larktest node --env-file=.env test/live.mjs
 
 另外 runner 会设 `LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1` 和 `LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1`，
 免得每次调用都带一条「有新版本」的 `_notice`。
+
+---
+
+## 版本适配（v1.1.1）
+
+- **多维表格记录**：`lark-cli` 1.0.98 起移除了 `base +record-list --format markdown`
+  （只剩 `json` 内联矩阵与 `ndjson` 落盘），旧代码会直接收到
+  `deprecated format: markdown is no longer supported`。现在统一用
+  `--format json` 拿 `fields` + 二维 `data`，由插件自己渲染 Markdown 表格，
+  并额外保留 `record_id` 列，1.0.88 与 1.0.98 都能跑。
+- **数据表清单**：`base +table-list` 返回的字段是 `id` / `rev` / `records_count`，
+  不是 OpenAPI 文档里的 `table_id` / `revision`，以前会渲染成 `table_id=undefined`；
+  现在两个名字都认，顺带显示记录条数。
+- **画板原生表格**：`whiteboard +export --output-type raw` 里表格是 `type: "table"`
+  节点，文字在 `table.cells[].text.text`（坐标 1 起始），不在 `node.text.text` 上。
+  以前只读后者，流程图里的阶段名/泳道名/门禁整块丢失；现在按 `table.meta`
+  的行列数还原成 Markdown 表格。
+- **错误提示**：缺权限时把 `missing_scopes` 原样列出来；`232034`（应用未发布）
+  与 `wiki:node:retrieve` 有针对性建议。
 
 ---
 
