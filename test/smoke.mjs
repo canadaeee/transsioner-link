@@ -275,10 +275,14 @@ check('每个工具都有 parameters 与 output', () => {
     assert.equal(tool.output.schema.type, 'string', name)
   }
 })
-check('lark-cli 可解析', () => {
+check('lark-cli 可解析（未安装时给出可执行建议）', () => {
   const resolved = resolveLarkBin('')
-  assert.equal(resolved.ok, true, resolved.detail)
-  assert.match(resolved.bin, /lark-cli$/)
+  if (resolved.ok) {
+    assert.match(resolved.bin, /lark-cli$/)
+    return
+  }
+  // CI 或没装 lark-cli 的机器：这里不该抛栈，而要给出「怎么装/怎么授权」
+  assert.match(resolved.detail, /lark-cli auth login/, `报错不够可执行：${resolved.detail}`)
 })
 
 // ── 用假 CLI 验证 runner 的边界行为（错误信封在 stderr、身份参数、超时杀进程组）──
