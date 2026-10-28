@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Lark Connector",
+    "description": "Read-only access to enterprise Lark/Feishu through the local lark-cli: docs, spreadsheets, Base tables, group chats and message search."
+  }
+}

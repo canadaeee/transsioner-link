@@ -1,0 +1,54 @@
+{
+  "name": "transsioner-cli",
+  "version": "1.1.0",
+  "type": "module",
+  "description": "Transsioner-CLI：把本机 lark-cli 的只读能力接成 DSH 工具，让 Agent 直接读企业飞书云文档、电子表格、多维表格、画板、评论与妙记。",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node test/smoke.mjs",
+    "verify": "node test/verify.mjs",
+    "prepublishOnly": "node test/smoke.mjs && node test/verify.mjs"
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.3"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "lark",
+    "feishu",
+    "lark-cli",
+    "readonly"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/canadaeee/transsioner-link.git"
+  },
+  "bugs": {
+    "url": "https://github.com/canadaeee/transsioner-link/issues"
+  },
+  "homepage": "https://github.com/canadaeee/transsioner-link#readme",
+  "author": "canadaeee",
+  "license": "MIT",
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

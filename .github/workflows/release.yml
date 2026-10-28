@@ -1,0 +1,42 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 先跑自检
+        run: |
+          npm test
+          npm run verify
+
+      - name: 打包
+        run: |
+          set -eu
+          npm pack --pack-destination dist
+          # 版本号文件名留给固定版本的人，稳定名留给 latest/download
+          cp dist/transsioner-cli-*.tgz dist/transsioner-cli.tgz
+          ls -l dist
+
+      - name: 发布
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/transsioner-cli.tgz dist/transsioner-cli-*.tgz \
+            --title "$GITHUB_REF_NAME" \
+            --notes "DSH 插件包。安装：在 DSH 插件页粘贴 https://github.com/${GITHUB_REPOSITORY} 或本次 Release 的 .tgz 直链。" \
+            --verify-tag

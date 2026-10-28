@@ -1,0 +1,21 @@
+# 依赖与构建产物
+node_modules/
+*.tgz
+coverage/
+
+# 本地凭据与配置：绝不提交
+.env
+.env.*
+!.env.example
+*.local.yml
+*.local.yaml
+
+# lark-cli 状态目录（排障时可能被 homeDir 指到仓库里）
+.lark-home/
+.larktest/
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+*.log

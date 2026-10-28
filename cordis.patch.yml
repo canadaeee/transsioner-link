@@ -1,0 +1,42 @@
+# transsioner-cli — 企业飞书连接器（Transsioner-CLI）
+# ================================
+# 本 bundle 只做一件事：把本机已登录的 `lark-cli` 的**只读**能力，接成 Agent 可直接调用的
+# DSH 工具。插件本身不含任何飞书 API 实现，也不保存任何凭据——认证、令牌刷新、分页、
+# 富文本渲染全部由 lark-cli 承担。
+#
+# 为什么是 Host 插件而不是 skill
+# ------------------------------
+# DSH 的 bash 工具在 workspace-write 沙箱里运行，lark-cli 刷新令牌时要写
+# ~/Library/Application Support/lark-cli（macOS）或 %APPDATA%\\lark-cli（Windows），
+# 沙箱会把这次写入拒掉，于是**用户身份的调用在会话里时通时不通**。
+# 本插件在自己的 Node 进程里直接 exec lark-cli（不经过 bash 沙箱），
+# 因此能复用系统里那份唯一的凭据库，不会产生第二份会互相顶掉 refresh_token 的副本。
+#
+# 边界
+# ----
+# · 只有读命令：docs +fetch / docs +search / sheets +workbook-info / sheets +csv-get /
+#   base +table-list / base +record-list / im +chat-list / im +chat-search /
+#   im +chat-messages-list / im +messages-search / wiki +node-get。
+# · 不提供发消息、改文档、删文件等写操作；需要写时请用户自己在飞书里做。
+# · 不缓存正文；每次调用都是一次实时读取，权限按用户当前在飞书里的可见范围。
+- insert:
+    - id: transsioner-cli
+      name: transsioner-cli
+      config:
+        # lark-cli 可执行文件。留空则依次在 PATH、~/.local/bin、/opt/homebrew/bin、
+        # /usr/local/bin 里查找；也可以填绝对路径。
+        larkBin: ''
+        # 指定 lark-cli 的 profile（多套 app 时用）。留空则用 lark-cli 的当前 profile。
+        profile: ''
+        # 默认身份：user（以你的身份读，能看到你自己可见的文档与群）
+        #           bot（以应用身份读，只能看到共享给机器人的内容）
+        identity: user
+        # 单次调用超时（毫秒）。大文档/大表格会慢一些。
+        timeoutMs: 60000
+        # 单次返回给模型的字符上限；超出会截断并提示如何缩小范围。
+        maxChars: 30000
+        # 是否注册群聊/消息类工具。企业合规要求只看文档时设为 false。
+        enableChat: true
+        # 可选：把 lark-cli 的状态目录重定向到指定 HOME（排障/隔离用）。
+        # 正常留空——用系统里那份唯一凭据，避免 refresh_token 互相失效。
+        homeDir: ''

@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # 没有任何第三方依赖，不需要 install
+      - name: 离线冒烟
+        run: npm test
+
+      - name: 交付自检（manifest / files / locale / 图标 / 无凭据文件）
+        run: npm run verify
+
+      - name: 打包检查
+        run: npm pack --dry-run
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 只有一条硬规则：仓库里不许有 .env 和常见令牌形态。
+      - name: 确认没有提交凭据
+        run: |
+          set -eu
+          fail=0
+          if [ -e .env ]; then echo "::error::仓库里出现了 .env"; fail=1; fi
+          if git ls-files | grep -qE '(^|/)\.env$'; then echo "::error::.env 已被提交"; fail=1; fi
+          if git grep -nIE 'cli_[a-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|app_secret["'"'"']?\s*[:=]\s*["'"'"'][^"'"'"']{10,}' -- . ':!package-lock.json'; then
+            echo "::error::疑似凭据字符串，请检查上面的命中位置"; fail=1
+          fi
+          exit $fail
