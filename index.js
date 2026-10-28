@@ -168,10 +168,15 @@ export function apply(ctx, config) {
             ['docs:document.content:read', '文档正文'],
             ['sheets:spreadsheet:read', '电子表格'],
             ['base:record:read', '多维表格记录'],
-            ['im:chat:read', '群信息'],
+            ['im:chat:read', '群信息/列全部群'],
             ['im:message:readonly', '群消息'],
+            ['im:message.group_msg:get_as_user', '群消息（用户身份）'],
+            ['im:message.p2p_msg:get_as_user', '单聊消息（用户身份）'],
+            ['im:message.reactions:read', '消息表情回复'],
             ['search:docs:read', '云文档搜索'],
             ['search:message', '消息搜索'],
+            ['wiki:node:retrieve', '知识库 /wiki/ 节点解析'],
+            ['board:whiteboard:node:read', '画板节点'],
           ]
           lines.push('', `已授权范围：${scopes.length} 项。本插件关心的：`)
           for (const [scope, label] of wanted) {
