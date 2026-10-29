@@ -14,6 +14,7 @@ import {
 } from '../lib/docx.js'
 import { clip, renderChats, renderDoc, renderMessages, renderRecords, renderTables } from '../lib/format.js'
 import { collectTables, renderComments, renderTableMarkdown, renderWhiteboard } from '../lib/whiteboard.js'
+import { buildTitleMap, excelSerialToDate, formatCell, prettyDateTime, renderFieldList } from '../lib/bitable.js'
 import { parseTarget } from '../lib/link.js'
 import { loadTools } from './host.mjs'
 
@@ -134,6 +135,49 @@ check('单元格里的换行与竖线不破坏表格', () => {
 check('空表给结论而不是空表格', () => {
   const text = renderRecords({ table: 'T', fields: ['a'], rows: [] })
   assert.match(text, /没有记录/)
+})
+
+console.log('多维表格单元格')
+check('Excel 序列号转日期', () => {
+  assert.equal(excelSerialToDate(46331.03064), '2026-11-05 00:44')
+  assert.equal(excelSerialToDate(46331), '2026-11-05')
+  assert.equal(excelSerialToDate(12345), undefined)
+  assert.equal(excelSerialToDate(99999), undefined)
+})
+check('公式日期只保留日期', () => {
+  assert.equal(formatCell(46331.03064, { type: 'formula' }, new Map()), '2026-11-05')
+})
+check('日期字段压成短格式', () => {
+  assert.equal(prettyDateTime('2025-09-25T00:00:00.000+08:00'), '2025-09-25')
+  assert.equal(prettyDateTime('2025-09-25T14:30:00.000+08:00'), '2025-09-25 14:30')
+  assert.equal(prettyDateTime('不是日期'), undefined)
+})
+check('关联字段展开成标题', () => {
+  const links = new Map([['tblA', new Map([['recuVe0TTDdFzY', '售后系统']])]])
+  const text = formatCell([{ id: 'recuVe0TTDdFzY' }], { type: 'link', link_table: 'tblA' }, links)
+  assert.equal(text, '售后系统（recuVe0TTDdFzY）')
+  const raw = formatCell([{ id: 'recUnknown' }], { type: 'link', link_table: 'tblA' }, links)
+  assert.equal(raw, 'recUnknown')
+})
+check('关联标题取首列非空值', () => {
+  const map = buildTitleMap([['维修流程', 1], ['', '']], ['recA', 'recB'])
+  assert.equal(map.get('recA'), '维修流程')
+  assert.equal(map.get('recB'), undefined)
+})
+check('百分比字段带单位', () => {
+  assert.equal(formatCell(0.7, { type: 'number', style: { percentage: true } }, new Map()), '70%')
+})
+check('字段清单列出选项全集', () => {
+  const text = renderFieldList({
+    table: 'T',
+    fields: [
+      { name: '当前进度描述', type: 'select', multiple: true, options: [{ name: '正常' }, { name: '滞后' }] },
+      { name: '所属产品', type: 'link', link_table: 'tblfUU' },
+    ],
+  })
+  assert.match(text, /选项：正常 \/ 滞后/)
+  assert.match(text, /允许多选/)
+  assert.match(text, /关联表：tblfUU/)
 })
 
 console.log('画板与评论渲染')
@@ -309,9 +353,10 @@ check('消息渲染带发送人与 message_id', () => {
 
 console.log('注册面')
 const { tools } = loadTools({})
-check('11 个只读工具全部注册', () => {
+check('12 个只读工具全部注册', () => {
   const names = [...tools.keys()].sort()
   assert.deepEqual(names, [
+    'feishu_bitable_fields',
     'feishu_bitable_read',
     'feishu_chat_history',
     'feishu_chat_list',
@@ -331,6 +376,7 @@ check('没有写操作工具', () => {
 check('enableChat=false 时只剩文档类工具', () => {
   const { tools: docsOnly } = loadTools({ enableChat: false })
   assert.deepEqual([...docsOnly.keys()].sort(), [
+    'feishu_bitable_fields',
     'feishu_bitable_read',
     'feishu_doc_comments',
     'feishu_doc_read',

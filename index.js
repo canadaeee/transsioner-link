@@ -13,6 +13,7 @@
 import { createRunner } from './lib/cli.js'
 import { describeReferenceMap, extractDocTitle, normalizeDocContent } from './lib/docx.js'
 import { commentUserIds, renderComments, renderWhiteboard } from './lib/whiteboard.js'
+import { buildTitleMap, formatCell, renderFieldList } from './lib/bitable.js'
 import { BITABLE_KINDS, DOC_KINDS, KIND_LABELS, parseTarget, SHEET_KINDS } from './lib/link.js'
 import {
   clip,
@@ -182,6 +183,13 @@ export function apply(ctx, config) {
           for (const [scope, label] of wanted) {
             lines.push(`  ${scopes.includes(scope) ? '✓' : '✗'} ${label}（${scope}）`)
           }
+          // 勾选状态只是参考：有的命令按参数才校验范围（例如 --no-reactions 仍会被旧版本
+          // 要求 reactions 权限），以工具实际调用结果为准，别拿这张表当"能不能用"的结论。
+          lines.push(
+            '',
+            '注：这里的 ✓/✗ 只是授权清单的参考值。某个工具到底能不能用，以实际调用返回为准——' +
+              'lark-cli 的范围预校验比真实接口更严（例如 --no-reactions 仍可能被要求 reactions 范围）。',
+          )
         }
 
         if (settings.notes.length > 0) lines.push('', ...settings.notes.map((n) => `配置提示：${n}`))
@@ -462,6 +470,51 @@ export function apply(ctx, config) {
     })
 
     // ────────────────────────────────────────────────────────────────
+    // 5.4 读多维表格字段（类型 + 单选/多选选项全集 + 关联表）
+    // ────────────────────────────────────────────────────────────────
+    register({
+      name: 'feishu_bitable_fields',
+      description:
+        '读取多维表格某个数据表的字段清单：字段名、类型、单选/多选的全部选项、公式表达式、关联到哪张表。' +
+        '要看"任务状态有哪几个值"这类问题就用它。只读。',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: '多维表格链接或 app token' },
+          table: { type: 'string', description: '数据表名称或 table_id；省略则先列出所有数据表' },
+        },
+        required: ['url'],
+        additionalProperties: false,
+      },
+      async execute(args, exec) {
+        let target = parseTarget(args?.url)
+        if (!target.ok) return target.detail
+        target = await resolveThroughWiki(target, exec)
+        if (!target.ok) return target.detail
+        if (!BITABLE_KINDS.has(target.kind)) {
+          return `这是一个${KIND_LABELS[target.kind] ?? target.kind}，不是多维表格。`
+        }
+
+        const table = typeof args?.table === 'string' ? args.table.trim() : ''
+        if (table === '') {
+          const result = await runner.runJson(['base', '+table-list', '--base-token', target.token], { signal: exec?.signal })
+          if (!result.ok) return result.message
+          const tables = result.data?.tables ?? result.data?.items
+          return `${renderTables({ url: target.url, tables: Array.isArray(tables) ? tables : [] })}\n\n再指定 table 读取字段清单。`
+        }
+
+        const result = await runner.runJson(
+          ['base', '+field-list', '--base-token', target.token, '--table-id', table, '--format', 'json'],
+          { signal: exec?.signal },
+        )
+        if (!result.ok) return result.message
+        const fields = Array.isArray(result.data?.fields) ? result.data.fields : []
+        if (fields.length === 0) return `数据表「${table}」没有读到字段（可能表名不对，或你没有查看权限）。`
+        return clip(renderFieldList({ url: target.url, table, fields }), settings.maxChars, '字段太多，可换一张表再试。')
+      },
+    })
+
+    // ────────────────────────────────────────────────────────────────
     // 5. 读多维表格
     // ────────────────────────────────────────────────────────────────
     register({
@@ -516,6 +569,33 @@ export function apply(ctx, config) {
         const result = await runner.runJson(argv, { signal: exec?.signal })
         if (!result.ok) return result.message
         const data = result.data ?? {}
+
+        // 字段元信息：知道哪些列是关联、关联到哪张表、公式列怎么格式化
+        const metaResult = await runner.runJson(
+          ['base', '+field-list', '--base-token', target.token, '--table-id', table, '--format', 'json'],
+          { signal: exec?.signal },
+        )
+        const meta = metaResult.ok ? metaResult.data?.fields ?? [] : []
+        const byId = new Map(meta.map((field) => [String(field?.id ?? ''), field]))
+        const columns = (data.field_id_list ?? []).map((id) => byId.get(String(id)))
+
+        // 关联列只有 record_id，按 link_table 批量取回首列标题
+        const linkTitles = new Map()
+        const linkTables = new Set(
+          columns.filter((field) => field?.type === 'link' && typeof field.link_table === 'string').map((field) => field.link_table),
+        )
+        for (const linkTable of linkTables) {
+          const linked = await runner.runJson(
+            ['base', '+record-list', '--base-token', target.token, '--table-id', linkTable, '--limit', '200', '--format', 'json'],
+            { signal: exec?.signal },
+          )
+          if (!linked.ok) continue
+          linkTitles.set(
+            linkTable,
+            buildTitleMap(Array.isArray(linked.data?.data) ? linked.data.data : [], linked.data?.record_id_list),
+          )
+        }
+
         return clip(
           renderRecords({
             url: target.url,
@@ -525,6 +605,7 @@ export function apply(ctx, config) {
             recordIds: data.record_id_list,
             hasMore: data.has_more === true,
             rev: data.rev,
+            formatCell: (value, columnIndex) => formatCell(value, columns[columnIndex], linkTitles),
           }),
           settings.maxChars,
           '可增大 offset 继续，或减小 limit。',
