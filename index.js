@@ -10,10 +10,11 @@
  * 复用系统里唯一那份凭据。代价是**这些工具不受文件沙箱约束**——所以本插件只注册读命令，
  * 写操作一律不提供。
  */
-import { createRunner } from './lib/cli.js'
+import { createRunner, resolveLarkBin } from './lib/cli.js'
 import { describeReferenceMap, extractDocTitle, normalizeDocContent } from './lib/docx.js'
 import { commentUserIds, renderComments, renderWhiteboard } from './lib/whiteboard.js'
 import { buildTitleMap, formatCell, renderFieldList } from './lib/bitable.js'
+import { appendSetupHint, classifyStatus, renderBindGuide, renderScopeGuide } from './lib/setup.js'
 import { BITABLE_KINDS, DOC_KINDS, KIND_LABELS, parseTarget, SHEET_KINDS } from './lib/link.js'
 import {
   clip,
@@ -58,6 +59,9 @@ function normalizeSettings(config) {
   return {
     larkBin: str(raw.larkBin),
     profile: str(raw.profile),
+    // 部署时可选：填了就让引导里直接给这个 App ID；留空则用 <APP_ID> 占位符。
+    // 源码里不内置任何人的应用 ID，避免随仓库/文档外泄。
+    appId: str(raw.appId),
     identity: identity === 'bot' ? 'bot' : 'user',
     timeoutMs: int(raw.timeoutMs, DEFAULT_TIMEOUT_MS, 1_000, 600_000),
     maxChars: int(raw.maxChars, DEFAULT_MAX_CHARS, 1_000, 200_000),
@@ -128,7 +132,84 @@ export function apply(ctx, config) {
 
   ctx.inject(['tools'], (scoped) => {
     const output = textOutput()
-    const register = (tool) => registerTool(scoped, { output, ...tool })
+    // 所有工具的返回都过一遍"未配置引导"：缺绑定/缺授权时自动附上怎么配，
+    // 不要让用户对着一句 token_missing 自己猜。
+    const register = (tool) =>
+      registerTool(scoped, {
+        output,
+        ...tool,
+        execute: async (...args) => appendSetupHint(await tool.execute(...args), settings),
+      })
+
+    // ────────────────────────────────────────────────────────────────
+    // 0. 配置检查 / 引导
+    // ────────────────────────────────────────────────────────────────
+    register({
+      name: 'feishu_setup',
+      description:
+        '检查本机飞书 CLI 的绑定与授权状态：有没有装、绑没绑应用、用户身份和令牌是否有效。' +
+        '没配好时直接给出配置步骤（不含任何内置应用 ID）。只读。',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+      async execute(_args, exec) {
+        const statusResult = await runner.runJson(['auth', 'status', '--json'], { signal: exec?.signal })
+        if (!statusResult.ok) {
+          return [
+            '飞书连接配置检查：lark-cli 未就绪',
+            statusResult.message,
+            renderBindGuide(settings),
+          ].join('\n')
+        }
+
+        const status = statusResult.data ?? {}
+        const verdict = classifyStatus(status)
+        const user = status.identities?.user ?? {}
+
+        // `profile list` 输出的是裸 JSON 数组，不走 ok 信封，所以用 runText 再解析
+        let profiles = []
+        const listResult = await runner.runText(['profile', 'list'], { signal: exec?.signal })
+        if (listResult.ok) {
+          try {
+            const parsed = JSON.parse(listResult.text.replace(/^[^[]*/, ''))
+            if (Array.isArray(parsed)) profiles = parsed
+          } catch {
+            profiles = []
+          }
+        }
+        const active = profiles.find((item) => item?.active === true)
+
+        const lines = [
+          '飞书连接配置检查',
+          '────────────────────────────',
+          `lark-cli：${resolveLarkBin(settings).ok ? '可用' : '不可用'}`,
+          `应用：${status.appId ?? '(未知)'}（brand=${status.brand ?? '?'}${settings.profile === '' ? '' : `，配置指定 profile=${settings.profile}`}）`,
+          active === undefined
+            ? `profile：${profiles.length} 个${profiles.length > 0 ? `（当前未标记默认）` : ''}`
+            : `profile：${active.name ?? '(未命名)'}（共 ${profiles.length} 个，当前默认就是这个）`,
+          `用户身份：${user.status ?? '未知'}${user.userName === undefined ? '' : `（${user.userName}）`} ｜ 令牌：${user.tokenStatus ?? '未知'}`,
+          '',
+        ]
+
+        if (verdict.state === 'ready') {
+          lines.push(`结论：配置正常。${verdict.detail}`)
+          return lines.join('\n')
+        }
+
+        if (verdict.state === 'stale-token') {
+          lines.push(`结论：应用绑好了，但用户授权过期（${verdict.detail}）。`, renderScopeGuide())
+          return lines.join('\n')
+        }
+
+        lines.push(`结论：${verdict.detail}`, renderBindGuide(settings))
+        if (profiles.length > 1) {
+          lines.push(
+            '',
+            '提示：这台机器有多个 profile。如果目标是另一个应用，先 `lark-cli profile use <name>` 切过去，',
+            '或在插件配置里填 profile（留空表示跟随 lark-cli 当前默认）。',
+          )
+        }
+        return lines.join('\n')
+      },
+    })
 
     // ────────────────────────────────────────────────────────────────
     // 1. 自检
@@ -190,6 +271,12 @@ export function apply(ctx, config) {
             '注：这里的 ✓/✗ 只是授权清单的参考值。某个工具到底能不能用，以实际调用返回为准——' +
               'lark-cli 的范围预校验比真实接口更严（例如 --no-reactions 仍可能被要求 reactions 范围）。',
           )
+        }
+
+        // 身份没就绪时，别让人对着一堆 scope 猜，直接指向配置检查
+        const verdict = classifyStatus(status)
+        if (verdict.state !== 'ready') {
+          lines.push('', `配置状态：${verdict.detail}`, '跑 feishu_setup 看具体步骤（它不会要求你先知道应用 ID）。')
         }
 
         if (settings.notes.length > 0) lines.push('', ...settings.notes.map((n) => `配置提示：${n}`))

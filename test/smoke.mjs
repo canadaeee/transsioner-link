@@ -15,6 +15,7 @@ import {
 import { clip, renderChats, renderDoc, renderMessages, renderRecords, renderTables } from '../lib/format.js'
 import { collectTables, renderComments, renderTableMarkdown, renderWhiteboard } from '../lib/whiteboard.js'
 import { buildTitleMap, excelSerialToDate, formatCell, prettyDateTime, renderFieldList } from '../lib/bitable.js'
+import { appendSetupHint, classifyStatus } from '../lib/setup.js'
 import { parseTarget } from '../lib/link.js'
 import { loadTools } from './host.mjs'
 
@@ -178,6 +179,39 @@ check('字段清单列出选项全集', () => {
   assert.match(text, /选项：正常 \/ 滞后/)
   assert.match(text, /允许多选/)
   assert.match(text, /关联表：tblfUU/)
+})
+
+console.log('未配置引导')
+check('缺绑定时给出配置步骤，且不带任何真实 App ID', () => {
+  const text = appendSetupHint('飞书返回失败：token_missing', { appId: '' })
+  assert.match(text, /如何配置/)
+  assert.match(text, /<APP_ID>/)
+  assert.match(text, /--app-secret-stdin/)
+  assert.doesNotMatch(text, /cli_[a-z0-9]{10,}/)
+})
+check('配置里给了 appId 就用它', () => {
+  const text = appendSetupHint('token_missing', { appId: 'cli_demo123456' })
+  assert.match(text, /--app-id cli_demo123456/)
+})
+check('只是缺 scope 时给补授权步骤，不提 secret', () => {
+  const text = appendSetupHint('missing required scope(s): im:message', { appId: '' })
+  assert.match(text, /如何补权限/)
+  assert.match(text, /--domain all/)
+  assert.doesNotMatch(text, /--app-secret-stdin/)
+})
+check('无关错误不追加引导', () => {
+  const text = appendSetupHint('飞书返回失败：not found', { appId: '' })
+  assert.equal(text, '飞书返回失败：not found')
+})
+check('引导不重复追加', () => {
+  const once = appendSetupHint('token_missing', { appId: '' })
+  assert.equal(appendSetupHint(once, { appId: '' }), once)
+})
+check('配置状态分类', () => {
+  assert.equal(classifyStatus({ identities: { user: { status: 'ready', available: true, tokenStatus: 'valid' } } }).state, 'ready')
+  assert.equal(classifyStatus({ identities: { user: { status: 'ready', available: true, tokenStatus: 'expired' } } }).state, 'stale-token')
+  assert.equal(classifyStatus({ identities: { user: { status: 'missing', available: false } } }).state, 'no-user')
+  assert.equal(classifyStatus(null).state, 'no-cli')
 })
 
 console.log('画板与评论渲染')
@@ -358,7 +392,7 @@ check('消息渲染带发送人与 message_id', () => {
 
 console.log('注册面')
 const { tools } = loadTools({})
-check('12 个只读工具全部注册', () => {
+check('13 个只读工具全部注册', () => {
   const names = [...tools.keys()].sort()
   assert.deepEqual(names, [
     'feishu_bitable_fields',
@@ -370,6 +404,7 @@ check('12 个只读工具全部注册', () => {
     'feishu_message_search',
     'feishu_minutes_read',
     'feishu_search',
+    'feishu_setup',
     'feishu_sheet_read',
     'feishu_status',
     'feishu_whiteboard_read',
@@ -387,6 +422,7 @@ check('enableChat=false 时只剩文档类工具', () => {
     'feishu_doc_read',
     'feishu_minutes_read',
     'feishu_search',
+    'feishu_setup',
     'feishu_sheet_read',
     'feishu_status',
     'feishu_whiteboard_read',

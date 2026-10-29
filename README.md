@@ -111,6 +111,7 @@ keychain Set failed: open .../refresh-storage-probe.enc.xxx.tmp: operation not p
 | 工具 | 用途 | 典型入参 |
 |---|---|---|
 | `feishu_status` | 连接自检：lark-cli 位置、应用、user/bot 状态、已授权范围 | — |
+| `feishu_setup` | 配置检查：绑没绑应用、身份/令牌是否有效；没配好时给出步骤 | — |
 | `feishu_search` | 按关键词搜云文档/知识库/表格 | `{query:"周报"}` |
 | `feishu_doc_read` | 读文档正文（docx、旧版 doc、wiki 节点自动解析） | `{url:"https://…/docx/xxx", scope:"outline"}` |
 | `feishu_sheet_read` | 工作表清单 / 指定区间 CSV | `{url:"…/sheets/xxx", sheet:"Sheet1", range:"A1:F30"}` |
@@ -141,6 +142,7 @@ keychain Set failed: open .../refresh-storage-probe.enc.xxx.tmp: operation not p
 | `timeoutMs` | `60000` | 单次调用超时 |
 | `maxChars` | `30000` | 单次返回给模型的字符上限 |
 | `enableChat` | `true` | 设为 `false` 只保留文档类工具（合规收紧时用） |
+| `appId` | 空 | **可选**。填了之后，引导文案里会直接给这个 App ID；留空则用 `<APP_ID>` 占位符。插件源码不内置任何应用 ID |
 | `homeDir` | 空 | 排障用：把 lark-cli 状态重定向到别的 HOME。**正常不要设**，会造成令牌副本 |
 
 ---
