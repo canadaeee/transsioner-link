@@ -644,7 +644,13 @@ export function apply(ctx, config) {
           let value = target.token
           if (kind === 'wiki') {
             const node = await runner.runJson(['wiki', '+node-get', '--node-token', value], { signal: exec?.signal })
-            if (!node.ok) return node.message
+            if (!node.ok) {
+              // 节点解析失败多半是"没权限"或"给的不是节点 token"，
+              // 这时候直接抛 2890003 他会以为是画板接口的问题，补一句该往哪走。
+              return `${node.message}
+
+补充：画板工具要的是「画板 token」或「含画板的文档链接」。如果这是一篇普通文档，请改用 feishu_doc_read 读正文；如果确实含画板，先确认这个知识库节点对当前账号可见再重试。`
+            }
             title = node.data?.title
             kind = String(node.data?.obj_type ?? '')
             value = String(node.data?.obj_token ?? '')

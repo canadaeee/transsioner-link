@@ -315,6 +315,11 @@ check('令牌失效给出重新登录建议', () => {
   const text = formatApiFailure({ error: { code: 99991663, message: 'invalid token' } }, ['im', '+chat-list'])
   assert.match(text, /lark-cli auth login/)
 })
+check('2890003 翻译成可见性提示', () => {
+  const text = formatApiFailure({ error: { code: 2890003, message: 'fail' } }, ['wiki', '+node-get'])
+  assert.match(text, /不可见/)
+  assert.match(text, /docx/)
+})
 check('沙箱写失败给出可执行建议', () => {
   const text = formatApiFailure({ error: { message: 'keychain Set failed: operation not permitted' } }, ['auth', 'status'])
   assert.match(text, /沙箱|凭据库/)
