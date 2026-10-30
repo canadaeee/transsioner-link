@@ -1,6 +1,6 @@
 {
   "name": "transsioner-cli",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "type": "module",
   "description": "Transsioner-CLI：把本机 lark-cli 的只读能力接成 DSH 工具，让 Agent 直接读企业飞书云文档、电子表格、多维表格、画板、评论与妙记。",
   "exports": {

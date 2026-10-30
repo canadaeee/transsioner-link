@@ -211,6 +211,8 @@ check('配置状态分类', () => {
   assert.equal(classifyStatus({ identities: { user: { status: 'ready', available: true, tokenStatus: 'valid' } } }).state, 'ready')
   assert.equal(classifyStatus({ identities: { user: { status: 'ready', available: true, tokenStatus: 'expired' } } }).state, 'stale-token')
   assert.equal(classifyStatus({ identities: { user: { status: 'missing', available: false } } }).state, 'no-user')
+  // 待续期不是配置问题，别误报到配置流程
+  assert.equal(classifyStatus({ identities: { user: { status: 'ready', available: true, tokenStatus: 'needs_refresh' } } }).state, 'ready')
   assert.equal(classifyStatus(null).state, 'no-cli')
 })
 
